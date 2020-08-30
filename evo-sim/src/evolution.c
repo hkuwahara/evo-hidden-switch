@@ -1,0 +1,480 @@
+#include <math.h>
+
+#include "evolution.h"
+#include "random_number_generator.h"
+#include "environment.h"
+#include "util.h"
+#include "options.h"
+
+#include <pthread.h>
+
+#ifndef THREAD_MAX
+#define THREAD_MAX 1
+#endif
+
+static double envChangeThreshold = 0.0;
+static double envFluctuationRate = DEFAULT_ENV_FLUCTUATION_RATE;
+static double bugMutationThreshold = 0.0;
+static double bugMutationRate = DEFAULT_BUG_MUTATION_RATE;
+static double signalTrust = DEFAULT_SIGNAL_TRUST;
+
+static char *outputDir;
+static char fitnessSelection;
+static int sampleStart;
+static int generationNum;
+static int printGenerationInterval;
+
+static BUG *bugs;
+static int populationSize;
+static BUG *tempBugs;
+static double *fitnessValueSums;
+
+static ENVIRONMENT *env;
+static RANDOM_NUMBER_GENERATOR *_randomGen;
+
+typedef RET_VAL (*PRINT_FUNC)(int genNum);
+typedef RET_VAL (*SIM_FUNC)(BUG *bug);
+typedef RET_VAL (*MUTATE_FUNC)(BUG *bug);
+
+static PRINT_FUNC printPopulations;
+static SIM_FUNC simulateOneGen;
+static MUTATE_FUNC mutateBug;
+
+static RET_VAL _mutateAll( BUG *bug );
+static RET_VAL _mutateKd( BUG *bug );
+static RET_VAL _mutateBurst( BUG *bug );
+static RET_VAL _mutateN( BUG *bug );
+static RET_VAL _mutateScale( BUG *bug );
+
+static RET_VAL _select();
+static int _searchIndexInFitnessSums( double *fitnessSums, double threshold );
+static RET_VAL _printPopulations2( int genNum );
+static RET_VAL _printBugStatus( FILE *file, int bugNum );
+static void *_performSimulations( void *arg );
+static void _assertSelectedIndex( double *fitnessSums, double threshold, int index );
+
+
+
+#ifdef DEBUG
+#define _ASSERT_SELECTED_INDEX(f,t,i) _assertSelectedIndex(f,t,i)
+#else
+#define _ASSERT_SELECTED_INDEX(f,t,i)
+#endif
+
+#ifdef DEBUG
+static void __assert( BOOL q, char *message ) {
+    if( !(q) ) {
+        printf( "%s" NEW_LINE, message );
+        exit(-1);
+    }
+}
+#define ASSERT(q,m) __assert(q,m)
+#else
+#define ASSERT(q,m)
+#endif
+
+static int simID = 0;
+static pthread_mutex_t mutexSimID;
+
+static int _initialEnvChangeFrequency = 14;
+static int _endEnvChangeFrequency = 2;
+static int _iterationNum = 1;
+static int envChangeCycle = 0;
+
+
+
+RET_VAL initializeEvolution(int argc, char **argv) {
+    
+    char *type1 = NULL;
+    
+    int i = 0;
+    int seed = 0;
+    char *endp = NULL;
+    PROPERTIES *prop = NULL;
+    
+    if( argc < 4 ) {
+        printf("format: %s <mutation-rate> <out-dir> [<generation-num] [print-interval]  [<init-frequency>] [<basal-level>] [<threshold>] [<bug-size>] [<mutation>] [<srand>] [<middle-frequency>]" NEW_LINE, argv[0] );
+        return FAILING;
+    }
+    setArguments( argc, argv );
+    bugMutationRate = strtod( argv[1], &endp );
+    if( bugMutationRate == 0.0 ) {
+        bugMutationRate = DEFAULT_BUG_MUTATION_RATE;
+    }
+    outputDir = argv[2];
+
+    if( argc > 3 ) {
+        generationNum = (int)strtol( argv[3], &endp, 0 );
+        if( generationNum == 0 ) {
+            generationNum = DEFAULT_GENERATION_NUM;
+        }
+    }
+    else {
+        generationNum = DEFAULT_GENERATION_NUM;
+    }
+    if( argc > 4 ) {
+        printGenerationInterval = (int)strtol( argv[4], &endp, 0 );
+        if( printGenerationInterval == 0 ) {
+            printGenerationInterval = DEFAULT_PRINT_GENERATION_INTERVAL;
+        }
+    }
+    else {
+        printGenerationInterval = DEFAULT_PRINT_GENERATION_INTERVAL;
+    }
+    if( argc > 5 ) {
+        _initialEnvChangeFrequency = (int)strtol( argv[5], &endp, 0 );
+        if( _initialEnvChangeFrequency == 0 ) {
+            _initialEnvChangeFrequency = 1000000;                
+        }
+    }
+    else {
+        _initialEnvChangeFrequency = 1000000;                
+    }
+
+    if( argc > 8 ) {
+        populationSize = (int)strtol( argv[8], &endp, 0 );
+    }
+    else {
+        populationSize = DEFAULT_POPULATION_SIZE;
+    }
+
+
+    if( argc > 9 ) {
+        if( argv[9][0] == '0') {
+            mutateBug = _mutateAll;
+        }
+        else if( argv[9][0] == '1' ) {
+            mutateBug = _mutateKd;
+        }
+        else if( argv[9][0] == '2') {
+            mutateBug = _mutateBurst;
+        }
+        else if( argv[9][0] == '3') {
+            mutateBug = _mutateN;
+        }
+        else if( argv[9][0] == '4' ) {
+            mutateBug = _mutateScale;
+        }
+        else {
+            mutateBug = _mutateKd;
+        }
+
+    }
+    else {
+        mutateBug = _mutateKd;
+    }
+    _randomGen = CreateRandomNumberGenerator();
+    if( argc > 10 ) {
+        seed = (int)strtol( argv[10], &endp, 0 );
+	_randomGen->SetSeed( seed );
+    }
+    
+    if( argc > 11 ) {
+        _endEnvChangeFrequency = (int)strtol( argv[11], &endp, 0 );
+        if( _endEnvChangeFrequency == 0 ) {
+            _endEnvChangeFrequency = 1000000;                
+        }
+    }
+    else {
+        _endEnvChangeFrequency = 1000000;                
+    }
+    bugs = (BUG*)MALLOC( populationSize * sizeof(BUG));
+    tempBugs = (BUG*)MALLOC( populationSize * sizeof(BUG));
+    fitnessValueSums = (double*)MALLOC( populationSize * sizeof(double));
+
+    for( i=0; i < populationSize; i++ ) {
+        initializeBug( &(bugs[i]) );
+    }
+    
+    /* to generate all data */
+    printPopulations = _printPopulations2;
+    simulateOneGen = simulateOneGeneration2;
+
+    printf("%s", argv[0] );
+    for( i = 1; i < argc; i++ ) {
+        printf( " %s", argv[i]);
+    }
+    printf(NEW_LINE);
+    printf("population size: %i" NEW_LINE, populationSize);
+
+    fflush(stdout);
+    return SUCCESS;
+}
+
+
+RET_VAL performEvolution() {
+    int i = 0;
+    int j = 1;
+    int k = 0;
+    int increment = 1;
+    BUG *bug = NULL;
+    pthread_t threads[THREAD_MAX];
+    pthread_attr_t attr;
+    void *status = NULL;
+
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+    env = getEnvironment();
+    
+    envChangeCycle = _initialEnvChangeFrequency;
+    for( _iterationNum = 1; _iterationNum <= 3; _iterationNum++) {
+    	if( env->mode == MODE_HIGH_A ) { /* to set the first generation to be in e1 */
+    		env->changeMode(env);
+	}
+        for( j = 1; j <= generationNum; j++ ) {
+            if( ( j % envChangeCycle ) == 1 ) {
+                env->changeMode(env);
+            }
+            for( i = 0; i < populationSize; i++ ) {
+                bugMutationThreshold = _randomGen->GetNextUnitUniform();
+                if( bugMutationRate >= bugMutationThreshold ) {
+                    TRACE_1("\tbug %i is mutated" NEW_LINE, i );
+                    mutateBug( &(bugs[i]) );
+                }
+            }
+            simID = 0;
+            for( i = 0; i < THREAD_MAX; i++ ) {
+                pthread_create( &(threads[i]), &attr, _performSimulations, (void*)i );
+            }
+            for(i = 0; i < THREAD_MAX; i++) {
+                pthread_join( threads[i], &status);
+            }
+            if( j % printGenerationInterval == 0 ) {
+                if( IS_FAILED( _printPopulations2(j) ) ) {
+                    printf("print distribution Kd failed\n");
+                    return FAILING;
+                }
+            }
+            _select();
+        }
+        if( _iterationNum == 1 ) {
+            envChangeCycle = _endEnvChangeFrequency;
+        }
+        else { /* iteration must be 2 now */
+            envChangeCycle = _initialEnvChangeFrequency;
+        }
+    } 
+    FREE(bugs);
+    FREE(tempBugs);
+    FREE(fitnessValueSums);
+
+    return SUCCESS;
+}
+
+
+
+static RET_VAL _select() {
+    int i = 0;
+    int selected = 0;
+    double sum = 0.0;
+    double threshold = 0.0;
+
+    memcpy( (CADDR_T)tempBugs, (CADDR_T)bugs, populationSize * sizeof(BUG) );
+
+    for( i = 0; i < populationSize; i++ ) {
+        ASSERT( (env->getFitness( &(tempBugs[i]) )>=0.0), "fitness cannot be negative" );
+        sum += env->getFitness( &(tempBugs[i]) );
+        fitnessValueSums[i] = sum;
+    }
+    
+    for( i = 0; i < populationSize; i++ ) {
+        threshold = _randomGen->GetNextUnitUniform() * sum;
+        selected = _searchIndexInFitnessSums( fitnessValueSums, threshold );
+        _ASSERT_SELECTED_INDEX( fitnessValueSums, threshold, selected );
+        TRACE_2("\t\tbug %i is selected with threshold %g", selected, threshold );
+        divideBug( &(bugs[selected]), &(tempBugs[i]) );
+        tempBugs[i].parentIndex = selected; 
+    }
+    
+    memcpy( (CADDR_T)bugs, (CADDR_T)tempBugs, populationSize * sizeof(BUG) );
+
+    return SUCCESS;
+}
+
+
+
+
+static RET_VAL _mutateAll( BUG *bug ) {
+    int sel = _randomGen->GetNextDiscreteUniform( 0, 3 );
+    switch( sel ) {
+        case 0: 
+            _mutateKd( bug );
+        break;
+        case 1: 
+            _mutateBurst( bug );
+        break;
+        case 2: 
+            _mutateN( bug );
+        break;
+        case 3: 
+            _mutateScale( bug );
+        break;
+        default:
+        break;
+    }
+    
+    return SUCCESS;
+}
+
+static RET_VAL _mutateKd( BUG *bug ) {
+    double change = 1.0 * _randomGen->GetNextUnitNormal();
+    double KD = 1.0 / bug->K_a_A;
+    KD += change;
+    if( KD < 1.0 ) {
+        KD = 1.0;
+    }
+
+    bug->K_a_A = 1.0 / KD;
+
+    return SUCCESS;
+}
+
+static RET_VAL _mutateBurst( BUG *bug ) {
+    double change = 0.2 * _randomGen->GetNextUnitNormal();
+    double burst = bug->burstA + change;
+    if( burst < 0.01 ) {
+        burst = 0.01;
+    }
+    bug->burstA = burst;
+    bug->k_transl = bug->k_mdeg * burst;
+
+    return SUCCESS;
+}
+
+
+static RET_VAL _mutateN( BUG *bug ) {
+    double ran = 0.2 * _randomGen->GetNextUnitNormal();
+	double n = bug->n_a_A + ran;
+	if( n < 0.0 ) {
+		n = 0.0;
+	}
+	else if( n > 10.0) {
+		n = 10.0;
+	}  
+	bug->n_a_A = n;
+
+    return SUCCESS;
+}
+
+static RET_VAL _mutateScale( BUG *bug ) {
+    double change = 0.2 * _randomGen->GetNextUnitNormal();
+    double scale = bug->scale + change;
+    if( scale < 0.01 ) {
+        scale = 0.01;
+    }
+    bug->scale = scale;
+    
+    return SUCCESS;
+}
+
+
+
+
+static int _searchIndexInFitnessSums( double *fitnessSums, double threshold ) {
+    int right = 0;
+    int left = populationSize - 1;
+    int index = 0;
+    
+    while( right < left ) {
+        index = (right + left)/2;
+        if( fitnessSums[index] < threshold ) {
+            right = index + 1;
+        }
+        else {
+            left = index;
+        }
+    }
+
+    return right;
+}
+
+static RET_VAL _printPopulations( int genNum ) {
+    int i = 0;
+    FILE *file = NULL;
+    char filename[1024];
+
+    sprintf( filename, "%s%cf-%i-gen-%i-env-%i.csv", outputDir, FILE_SEPARATOR, envChangeCycle, genNum, env->mode );
+    if( ( file = fopen(filename, "w")) == NULL ) {
+        return FAILING;
+    }
+    fprintf( file, "bug-ID, A(tmax), Kd, burst-size, fitness\n" );
+
+    for( ; i < populationSize; i++ ) {
+        if( _printBugStatus( file, i ) == FAILING ) {
+            return FAILING;
+        }
+    }
+    fclose( file );
+    return SUCCESS;
+}
+
+static RET_VAL _printBugStatus( FILE *file, int bugNum ) {
+    BUG *bug = &(bugs[bugNum]);
+
+    fprintf( file, "%i, %g, %g, %g, %g\n",
+        bugNum + 1, bug->A, 1.0 / bug->K_a_A, bug->burstA, env->getFitness(bug) );
+
+    return SUCCESS;
+}
+
+
+static void _assertSelectedIndex( double *fitnessSums, double threshold, int index ) {
+    if( index == 0 ) {
+        if( fitnessSums[0] < threshold ) {
+            printf("error in selected index" NEW_LINE );
+            exit(1);
+        }
+    }
+    else {
+        if( !( ( fitnessSums[index - 1] < threshold ) && ( fitnessSums[index] >= threshold ) ) ) {
+            printf("error in selected index" NEW_LINE );
+            exit(1);
+        }
+    }
+}
+
+static void *_performSimulations( void *arg ) {
+    int current = 0;
+
+    while(1) {
+        pthread_mutex_lock(&mutexSimID);
+        current = simID;
+        simID += 1;
+        pthread_mutex_unlock(&mutexSimID);
+
+        if( current >= populationSize ) {
+            pthread_exit( NULL );
+        }
+
+        simulateOneGen( &(bugs[current]) );
+    }
+    pthread_exit( NULL );
+    return NULL;
+}
+
+
+
+static RET_VAL _printPopulations2( int genNum ) {
+    int i = 0;
+    BUG *bug = NULL;
+    FILE *file = NULL;
+    char filename[1024];
+
+    sprintf( filename, "%s%cf-%i-n-%i-gen-%i-env-%i.csv", outputDir, FILE_SEPARATOR, envChangeCycle, _iterationNum, genNum, env->mode );
+    if( (file = fopen(filename, "w")) == NULL ) {
+        printf("%s%cgen-%i-env-%i.csv could not be created\n", outputDir, FILE_SEPARATOR, genNum, env->mode );
+        return FAILING;
+    }
+
+    fprintf( file, "(1) A, (2) Kd, (3) b, (4) N, (5) a, (6) fitness(E0), (7) fitness(E1), (8) parent" NEW_LINE );
+    for( i = 0; i < populationSize; i++ ) {
+        bug = &(bugs[i]);
+        bug->fitness0 = env->getFitnessLow( bug );
+        bug->fitness1 = env->getFitnessHigh( bug );
+        fprintf( file, "%g, %g, %g, %g, %g, %g, %g, %i" NEW_LINE, bug->A, (1.0 / bug->K_a_A), bug->burstA, (bug->n_a_A > 0 ? bug->n_a_A : 0.0), bug->scale, bug->fitness0, bug->fitness1, bug->parentIndex );
+    }
+    fclose( file );
+    return SUCCESS;
+}
+

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configurationDescriptor version="84">
+  <logicalFolder name="root" displayName="root" projectFiles="true" kind="ROOT">
+    <logicalFolder name="HeaderFiles"
+                   displayName="Header Files"
+                   projectFiles="true">
+      <itemPath>src/bug.h</itemPath>
+      <itemPath>src/common.h</itemPath>
+      <itemPath>src/def.h</itemPath>
+      <itemPath>src/dll_scope.h</itemPath>
+      <itemPath>src/environment.h</itemPath>
+      <itemPath>src/evolution.h</itemPath>
+      <itemPath>src/exponentially_distributed_random_generator.h</itemPath>
+      <itemPath>src/hash_table.h</itemPath>
+      <itemPath>src/linked_list.h</itemPath>
+      <itemPath>src/log.h</itemPath>
+      <itemPath>src/normally_distributed_random_generator.h</itemPath>
+      <itemPath>src/options.h</itemPath>
+      <itemPath>src/random_number_generator.h</itemPath>
+      <itemPath>src/strconv.h</itemPath>
+      <itemPath>src/type.h</itemPath>
+      <itemPath>src/uniformly_distributed_discrete_random_generator.h</itemPath>
+      <itemPath>src/uniformly_distributed_random_generator.h</itemPath>
+      <itemPath>src/util.h</itemPath>
+      <itemPath>src/vector.h</itemPath>
+    </logicalFolder>
+    <logicalFolder name="ResourceFiles"
+                   displayName="Resource Files"
+                   projectFiles="true">
+    </logicalFolder>
+    <logicalFolder name="SourceFiles"
+                   displayName="Source Files"
+                   projectFiles="true">
+      <itemPath>src/bug.c</itemPath>
+      <itemPath>src/environment.c</itemPath>
+      <itemPath>src/evolution.c</itemPath>
+      <itemPath>src/exponentially_distributed_random_generator.c</itemPath>
+      <itemPath>src/hash_table.c</itemPath>
+      <itemPath>src/linked_list.c</itemPath>
+      <itemPath>src/log.c</itemPath>
+      <itemPath>src/main.c</itemPath>
+      <itemPath>src/normally_distributed_random_generator.c</itemPath>
+      <itemPath>src/options.c</itemPath>
+      <itemPath>src/random_number_generator.c</itemPath>
+      <itemPath>src/strconv.c</itemPath>
+      <itemPath>src/uniformly_distributed_discrete_random_generator.c</itemPath>
+      <itemPath>src/uniformly_distributed_random_generator.c</itemPath>
+      <itemPath>src/util.c</itemPath>
+      <itemPath>src/vector.c</itemPath>
+    </logicalFolder>
+    <logicalFolder name="ExternalFiles"
+                   displayName="Important Files"
+                   projectFiles="false">
+      <itemPath>Makefile</itemPath>
+    </logicalFolder>
+  </logicalFolder>
+  <projectmakefile>Makefile</projectmakefile>
+  <confs>
+    <conf name="Debug" type="1">
+      <toolsSet>
+        <remote-sources-mode>LOCAL_SOURCES</remote-sources-mode>
+        <compilerSet>GNU|GNU</compilerSet>
+      </toolsSet>
+      <compileType>
+        <cTool>
+          <preprocessorList>
+            <Elem>DEBUG</Elem>
+          </preprocessorList>
+        </cTool>
+        <linkerTool>
+          <output>bin/noiseevol5</output>
+          <linkerLibItems>
+            <linkerLibStdlibItem>Mathematics</linkerLibStdlibItem>
+            <linkerLibStdlibItem>PosixThreads</linkerLibStdlibItem>
+          </linkerLibItems>
+        </linkerTool>
+      </compileType>
+    </conf>
+    <conf name="Release" type="1">
+      <toolsSet>
+        <remote-sources-mode>LOCAL_SOURCES</remote-sources-mode>
+        <compilerSet>GNU|GNU</compilerSet>
+      </toolsSet>
+      <compileType>
+        <cTool>
+          <developmentMode>5</developmentMode>
+        </cTool>
+        <ccTool>
+          <developmentMode>5</developmentMode>
+        </ccTool>
+        <fortranCompilerTool>
+          <developmentMode>5</developmentMode>
+        </fortranCompilerTool>
+        <linkerTool>
+          <output>bin/noiseevol5</output>
+          <linkerLibItems>
+            <linkerLibStdlibItem>Mathematics</linkerLibStdlibItem>
+            <linkerLibStdlibItem>PosixThreads</linkerLibStdlibItem>
+          </linkerLibItems>
+        </linkerTool>
+      </compileType>
+    </conf>
+  </confs>
+</configurationDescriptor>
