@@ -20,8 +20,8 @@ a. The simulated was implemented in R. No additional packages are needed to run 
 
 The following is a list of scripts used in data analysis.  They are all R scripts, all of which were tested on R version 3.5.2. The required package is: Cairo. 
 - Scripts for data analysis after the generation of simulated data of the abstract model:
-- get-mean-evolution-nw-2.R:	Generate the mean time evolution of the evolvable Gaussian width parameter in Figure 5a.
-- monostable-fitness-distribution.R and bistable-fitness-distribution.R:	Generate the average fitness contour heatmap in Figure 5b.
+- get-mean-evolution-nw-2.R:	Generate the mean time evolution of the evolvable Gaussian width parameter in Figure 4a.
+- monostable-fitness-distribution.R and bistable-fitness-distribution.R:	Generate the average fitness contour heatmap in Figure 4b.
 - fitness-vs-width.R and fitness-vs-width-bi2.R:	Generate plots to illustrate how different Gaussian width value can affect the average fitness for both monostable and bistable models.
 
 
