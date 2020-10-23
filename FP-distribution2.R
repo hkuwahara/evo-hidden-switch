@@ -45,8 +45,8 @@ genD <- function(params) {
 textscale <- 1.0;
 pointsize <- 1.5;
 
-pardir <- "/home/hiro/research/kaust/change-env-fluctuation/revision/more-samples";
-outdir <- "/home/hiro/research/kaust/change-env-fluctuation/revision/more-samples";
+pardir <- ".";
+outdir <- ".";
 
 ###
 # i is 141 for a bistable example.
